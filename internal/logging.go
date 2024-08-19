@@ -41,6 +41,13 @@ type StateLogger struct {
 	events []Event
 }
 
+type StatList struct {
+	IPAddress  string
+	PortNumber int
+	NodeID     int
+	Events     []Event
+}
+
 func NewStateLogger(nodeID *int) *StateLogger {
 	return &StateLogger{
 		nodeID: *nodeID,
