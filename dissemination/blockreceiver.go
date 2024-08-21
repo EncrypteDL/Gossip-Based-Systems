@@ -14,7 +14,7 @@ type BlockReceiver struct {
 	recievedChunkCount int
 }
 
-func NewBlock(leaderCount int, chunkCount int, dataChunkCount int) *BlockReceiver {
+func newBlockReceiver(leaderCount int, chunkCount int, dataChunkCount int) *BlockReceiver {
 	r := &BlockReceiver{
 		blockCount:     leaderCount,
 		chunkCount:     chunkCount,
