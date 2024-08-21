@@ -1,0 +1,7 @@
+Starting transaction propagation...
+Node 0 received transaction: tx12345
+Node 4 received transaction: tx12345
+Node 1 received transaction: tx12345
+Node 2 received transaction: tx12345
+Node 3 received transaction: tx12345
+Transaction propagation completed.

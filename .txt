@@ -1,4 +1,0 @@
-https://researchgate.net/figure/Dissemination-using-the-gossip-service_fig1_221461408
-https://www.dpss.inesc-id.pt/~ler/reports/miguelbrancoea.pdf
-https://homepages.dcc.ufmg.br/~loureiro/alg/092/GossipBasedDissemination.pdf
-https://metatime.com/en/blog/what-is-the-gossip-protocol-what-are-its-types#!
