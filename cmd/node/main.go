@@ -9,6 +9,9 @@ import (
 	"log"
 	"net"
 	"net/rpc"
+	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -105,5 +108,23 @@ func main() {
 
 	//Node finished 
 	log.Printf("existing as expected...\n")
+}
+
+func getBandwitchUsage(processIndex string) int64{
+	cmd := exec.Command("nin/bash", "./get-network-usage.sh", processIndex)
+	output, err := cmd.Output()
+
+	if err != nil{
+		log.Printf("error accured while executing get-newtrok-usage.sh %s\n", err)
+		return 0
+	}
+
+	outputString := strings.TrimSpace(string(output))
+	bandwitchUsage, err := strconv.ParseInt(outputString, 10, 64)
+	if err != nil{
+		log.Printf("error occured while converting %s to int64 %s\n", outputString, err)
+		return 0
+	}
+	return bandwitchUsage
 }
 
