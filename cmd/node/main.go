@@ -7,6 +7,7 @@ import (
 	"EncrypteDL/Gossip-Based-Systems/server"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"net/rpc"
 	"os/exec"
@@ -17,13 +18,11 @@ import (
 
 func main() {
 
-	hostName := getEnvWithDefault("NODE_HOSTENAME", "127.0.0.1")
+	hostname := getEnvWithDefault("NODE_HOSTNAME", "127.0.0.1")
 	registryAddress := getEnvWithDefault("REGISTRY_ADDRESS", "localhost:1234")
 	processIndex := getEnvWithDefault("PROCESS_INDEX", "-1")
 
-	log.Printf("Process Index: %s\n", &processIndex)
-	log.Printf("Host Name: %s\n", &hostName)
-	log.Printf("registry address: %s\n", &registryAddress)
+	log.Printf("Process Index: %s\n", processIndex)
 
 	demux := internal.NewDemultiplexer(0)
 	server := server.NewServer(demux)
@@ -34,12 +33,12 @@ func main() {
 	}
 
 	rpc.HandleHTTP()
-	l, e := net.Listen("tcp", fmt.Sprint("%s:", hostName))
-	if err != nil {
+	l, e := net.Listen("tcp", fmt.Sprintf("%s:", hostname))
+	if e != nil {
 		log.Fatal("listen error:", e)
 	}
 
-	//Start the server
+	// start serving
 	go func() {
 		for {
 			conn, _ := l.Accept()
@@ -61,13 +60,14 @@ func main() {
 
 	var nodeList []registry.NodeInfo
 
-	//Node failed
+	///// Node Failed /////
 	defer func() {
 		if r := recover(); r != nil {
-			log.Println("Failed")
+			log.Println("########### FAILED ############")
 			registry.NodeFailed()
 		}
 	}()
+
 	for {
 		nodeList = registry.GetNodeList()
 		nodeCount := len(nodeList)
@@ -78,53 +78,150 @@ func main() {
 		log.Printf("received node list %d/%d\n", nodeCount, nodeConfig.NodeCount)
 	}
 
-	peerSet := createdPeerSet(nodeList, nodeConfig.GossipFanout, nodeInfo.ID, nodeInfo.IPAddress, nodeConfig.ConnectionCount)
-	statLogger := internal.NewStateLogger(nodeInfo.ID)
-	rapidChain := dissemination.NewDisseminator(demux, nodeConfig, peerSet, statLogger)
+	peerSet := createdPeerSet(nodeList, nodeConfig.GossipFanout, nodeInfo.ID, nodeInfo.IPAdrees, nodeConfig.ConnectionCount)
+	statLogger := internal.NewStateLogger(&nodeInfo.ID)
+	rapidchain := dissemination.NewDisseminator(demux, nodeConfig, peerSet, statLogger)
 
-	//Node started
+	///// Node Started /////
 	registry.NodeStarted()
 
-	runConsensus(rapidChain, nodeConfig.EndRound, nodeConfig.RoundSleepTime, nodeInfo.ID, nodeConfig.SourceCount, nodeConfig.MessageSize, nodeList, nodeConfig.DisseminationTimeout)
+	runConsensus(rapidchain, nodeConfig.EndRound, nodeConfig.RoundSleepTime, nodeInfo.ID, nodeConfig.SourceCount, nodeConfig.MessageSize, nodeList, nodeConfig.DisseminationTimeout)
 
 	sleepTime := time.Duration(nodeConfig.EndOfExperimentSleepTime) * time.Second
-	log.Printf("Reached target round count. Shutting down %s/n", sleepTime)
+	log.Printf("Reached target round count. Shutting down in %s\n", sleepTime)
 	time.Sleep(sleepTime)
 
-	log.Printf("Getting network usage...\n")
-	bandWithUsage := getBandwitchUsage(processIndex)
-	statLogger.NetworkUsage(-1, bandWithUsage)
+	log.Printf("getting network usage...\n")
+	bandwidthUsage := getBandwitchUsage(processIndex)
+	statLogger.NetworkUsage(-1, bandwidthUsage)
 
-	//Collect stats abd uploads to registry 
-	log.Printf("Uploading stats to the registry\n")
-	events :=statLogger.GetEvents()
-	statList :=  internal.StatList{
-		IPAddress: nodeInfo.IPAddress,
-		PortNumber: nodeInfo.PortNumber,
-		NodeID: nodeInfo.ID,
-		Events: events,
-	}
+	// collects stats abd uploads to registry
+	log.Printf("uploading stats to the registry\n")
+	events := statLogger.GetEvents()
+	statList := internal.StatList{IPAddress: nodeInfo.IPAdrees, PortNumber: nodeInfo.PortNumber, NodeID: nodeInfo.ID, Events: events}
 	registry.UploadStats(statList)
 
-	//Node finished 
-	log.Printf("existing as expected...\n")
+	///// Node Finished /////
+	registry.NodeFinished()
+
+	log.Printf("exiting as expected...\n")
 }
 
-func getBandwitchUsage(processIndex string) int64{
+func getBandwitchUsage(processIndex string) int64 {
 	cmd := exec.Command("nin/bash", "./get-network-usage.sh", processIndex)
 	output, err := cmd.Output()
 
-	if err != nil{
+	if err != nil {
 		log.Printf("error accured while executing get-newtrok-usage.sh %s\n", err)
 		return 0
 	}
 
 	outputString := strings.TrimSpace(string(output))
 	bandwitchUsage, err := strconv.ParseInt(outputString, 10, 64)
-	if err != nil{
+	if err != nil {
 		log.Printf("error occured while converting %s to int64 %s\n", outputString, err)
 		return 0
 	}
 	return bandwitchUsage
 }
 
+func createdPeerSet(nodeList []registry.NodeInfo, fanOut int, nodeID int, localIpAddress string, connectionCount int) server.PeerSet {
+	var copyNodeList []registry.NodeInfo
+	copyNodeList = append(copyNodeList, nodeList...)
+
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(copyNodeList), func(i, j int) { copyNodeList[i], copyNodeList[j] = copyNodeList[j], copyNodeList[i] })
+
+	peerSet := server.PeerSet{}
+
+	peerCount := 0
+	for i := 0; i < len(copyNodeList); i++ {
+		if peerCount == fanOut {
+			break
+		}
+
+		peer := copyNodeList[i]
+		//TODO: do not connect nodes from local machine
+		if peer.ID == nodeID || peer.IPAdrees == localIpAddress {
+			continue
+		}
+
+		err := peerSet.AddPeer(peer.IPAdrees, peer.PortNumber, connectionCount)
+		if err != nil {
+			panic(err)
+		}
+		log.Printf("new peer added: %s:%d ID %d\n", peer.IPAdrees, peer.PortNumber, peer.ID)
+		peerCount++
+	}
+
+	return peerSet
+
+}
+
+func getNodeInfo(netAddress string) registry.NodeInfo {
+	tokens := strings.Split(netAddress, ":")
+
+	ipAddress := tokens[0]
+	portNumber, err := strconv.Atoi(tokens[1])
+	if err != nil {
+		panic(err)
+	}
+
+	return registry.NodeInfo{
+		IPAdrees:   ipAddress,
+		PortNumber: portNumber,
+	}
+}
+
+func runConsensus(rc *dissemination.Disseminator, numberOfRounds int, roundSleepTime int, nodeID int, leaderCount int, blockSize int, nodeList []registry.NodeInfo, timeout int) {
+
+	currentRound := 1
+	for currentRound <= numberOfRounds {
+
+		log.Printf("+++++++++ Round %d +++++++++++++++\n", currentRound)
+
+		var messages []internal.Message
+
+		// if elected as a leader submits a block
+		isElected, electedLeaders := isElectedAsLeader(nodeList, currentRound, nodeID, leaderCount)
+
+		if isElected {
+			log.Println("elected as leader")
+			b := createBlock(currentRound, nodeID, blockSize, leaderCount)
+			rc.SubmitMessage(currentRound, b)
+		}
+
+		// TODO: is it better to log individual messages?
+		// waits to deliver the block
+		log.Printf("waiting to deliver messages...\n")
+		messages, unresponsiveLeaders := rc.WaitForMessage(currentRound, electedLeaders, timeout)
+
+		if unresponsiveLeaders != nil {
+			log.Printf("Unresponsive leader detected: %v\n", unresponsiveLeaders)
+			nodeList = removeUnresponsiveLeaders(unresponsiveLeaders, nodeList)
+			log.Printf("Unresponsive leaders are removed.")
+			continue
+		}
+
+		log.Printf("all messages delivered.\n")
+		payloadSize := 0
+		for i := range messages {
+			log.Printf("Round: %d Message[%d] %x\n", currentRound, i, internal.EncodeBase64(messages[i].Hash())[:15])
+			payloadSize += len(messages[i].Payload)
+		}
+
+		log.Printf("round finished, payload size payload size: %d bytes\n", payloadSize)
+
+		currentRound++
+
+		sleepTime := int64(roundSleepTime*1000) - (time.Now().UnixMilli() - messages[0].Time)
+		log.Printf("sleeping for %d ms\n", sleepTime)
+		time.Sleep(time.Duration(sleepTime) * time.Millisecond)
+
+		//sleepTime := time.Duration(roundSleepTime) * time.Second
+		//log.Printf("sleeping for %s\n", sleepTime)
+		//time.Sleep(sleepTime)
+
+	}
+
+}
