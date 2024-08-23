@@ -55,12 +55,12 @@ func main() {
 
 func readConfigFromFile() registry.NodeConfig {
 
-	data, err := ioutil.ReadFile(configFile)
+	data, err := ioutil.ReadFile("configFile")
 	if err != nil {
 		panic(err)
 	}
 
-	config := registery.NodeConfig{}
+	config := registry.NodeConfig{}
 	json.Unmarshal(data, &config)
 
 	return config
